@@ -1,6 +1,56 @@
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 use clap::Parser;
 use hyper::Uri;
-use tokio_vsock::VsockStream;
+use hyper::{
+    client::connect::{Connected, Connection},
+};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+struct VsockStream(tokio_vsock::VsockStream);
+
+impl Connection for VsockStream {
+    fn connected(&self) -> Connected {
+        let connected = Connected::new();
+
+        connected
+    }
+}
+
+impl AsyncRead for VsockStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        Pin::new(&mut self.0).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for VsockStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, std::io::Error>> {
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        Pin::new(&mut self.0).poll_shutdown(cx)
+    }
+}
 
 async fn vsock_connector(dst: Uri) -> Result<VsockStream, std::io::Error> {
     let scheme = dst.scheme().ok_or(std::io::Error::new(
@@ -36,6 +86,7 @@ async fn vsock_connector(dst: Uri) -> Result<VsockStream, std::io::Error> {
             .into(),
     )
     .await
+    .map(VsockStream)
 }
 
 #[derive(Parser)]
