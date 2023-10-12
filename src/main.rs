@@ -2,9 +2,9 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use clap::Parser;
-use hyper::Uri;
 use hyper::{
     client::connect::{Connected, Connection},
+    Body, Uri,
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
@@ -70,23 +70,23 @@ async fn vsock_connector(dst: Uri) -> Result<VsockStream, std::io::Error> {
         "uri should have an authority",
     ))?;
 
-    tokio_vsock::VsockStream::connect(
-        authority.host().parse::<u32>().map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "uri should have a u32 host",
-            )
-        })?,
-        authority
-            .port_u16()
-            .ok_or(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "uri should have a u16 port",
-            ))?
-            .into(),
-    )
-    .await
-    .map(VsockStream)
+    let host = authority.host().parse::<u32>().map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "uri should have a u32 host",
+        )
+    })?;
+    let port: u32 = authority
+        .port_u16()
+        .ok_or(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "uri should have a u16 port",
+        ))?
+        .into();
+
+    tokio_vsock::VsockStream::connect(host, port)
+        .await
+        .map(VsockStream)
 }
 
 #[derive(Parser)]
@@ -97,8 +97,21 @@ struct Cli {
     url: String,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    println!("url: {}", cli.url);
+    // WARN: Had to do Box::pin to get it to work, vsock_connector is not Unpin for some reason
+    let connector = tower::service_fn(|dst: Uri| Box::pin(vsock_connector(dst)));
+
+    let client = hyper::Client::builder().build::<_, Body>(connector);
+
+    let response_bytes =
+        hyper::body::to_bytes(client.get(cli.url.try_into()?).await?.into_body()).await?;
+
+    let res = String::from_utf8((&response_bytes).to_vec())?;
+
+    println!("{res}");
+
+    Ok(())
 }
