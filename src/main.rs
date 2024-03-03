@@ -12,9 +12,7 @@ struct VsockStream(tokio_vsock::VsockStream);
 
 impl Connection for VsockStream {
     fn connected(&self) -> Connected {
-        let connected = Connected::new();
-
-        connected
+        Connected::new()
     }
 }
 
@@ -109,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let response_bytes =
         hyper::body::to_bytes(client.get(cli.url.try_into()?).await?.into_body()).await?;
 
-    let res = String::from_utf8((&response_bytes).to_vec())?;
+    let res = String::from_utf8(response_bytes.to_vec())?;
 
     println!("{res}");
 
