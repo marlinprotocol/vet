@@ -1,5 +1,9 @@
 ![Marlin Oyster Logo](./logo.svg)
 
+# Archival
+
+Archived in favour of https://github.com/marlinprotocol/oyster-monorepo
+
 # Vet
 
 Curl-like utility to make http requests over vsocks.
